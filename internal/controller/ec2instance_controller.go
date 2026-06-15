@@ -19,10 +19,11 @@ package controller
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	computev1 "github.com/Rurutia1027/K8s-Operator-in-Action/api/v1"
 )
@@ -37,20 +38,21 @@ type Ec2InstanceReconciler struct {
 // +kubebuilder:rbac:groups=compute.cloud.com,resources=ec2instances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=compute.cloud.com,resources=ec2instances/finalizers,verbs=update
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the Ec2Instance object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.24.1/pkg/reconcile
+// Reconcile fetches the CR and logs spec fields — minimal loop, no AWS yet.
 func (r *Ec2InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	l := log.FromContext(ctx)
+	l.Info("reconcile started", "namespace", req.Namespace, "name", req.Name)
 
-	// TODO(user): your logic here
+	ec2Instance := &computev1.Ec2Instance{}
+	if err := r.Get(ctx, req.NamespacedName, ec2Instance); err != nil {
+		if errors.IsNotFound(err) {
+			l.Info("resource deleted, nothing to do")
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
 
+	l.Info("got resource", "instanceType", ec2Instance.Spec.InstanceType, "region", ec2Instance.Spec.Region)
 	return ctrl.Result{}, nil
 }
 

@@ -22,10 +22,10 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	computev1 "github.com/Rurutia1027/K8s-Operator-in-Action/api/v1"
 )
@@ -33,7 +33,7 @@ import (
 var _ = Describe("Ec2Instance Controller", func() {
 	Context("When reconciling a resource", func() {
 		const (
-			resourceName      = "test-resource"
+			resourceName      = "minimal-test"
 			resourceNamespace = "default"
 		)
 
@@ -43,45 +43,63 @@ var _ = Describe("Ec2Instance Controller", func() {
 			Name:      resourceName,
 			Namespace: resourceNamespace,
 		}
-		ec2instance := &computev1.Ec2Instance{}
 
 		BeforeEach(func() {
-			By("creating the custom resource for the Kind Ec2Instance")
-			err := k8sClient.Get(ctx, typeNamespacedName, ec2instance)
+			cr := &computev1.Ec2Instance{}
+			err := k8sClient.Get(ctx, typeNamespacedName, cr)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &computev1.Ec2Instance{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      resourceName,
 						Namespace: resourceNamespace,
 					},
-					// TODO(user): Specify other spec details if needed.
+					Spec: computev1.Ec2InstanceSpec{
+						InstanceType: "t3.micro",
+						AMIId:        "ami-placeholder",
+						Region:       "us-east-1",
+					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
 			}
 		})
 
 		AfterEach(func() {
-			// TODO(user): Cleanup logic after each test, like removing the resource instance.
 			resource := &computev1.Ec2Instance{}
 			err := k8sClient.Get(ctx, typeNamespacedName, resource)
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Cleanup the specific resource instance Ec2Instance")
-			Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			if err == nil {
+				Expect(k8sClient.Delete(ctx, resource)).To(Succeed())
+			}
 		})
+
 		It("should successfully reconcile the resource", func() {
-			By("Reconciling the created resource")
-			controllerReconciler := &Ec2InstanceReconciler{
+			reconciler := &Ec2InstanceReconciler{
 				Client: k8sClient,
 				Scheme: k8sClient.Scheme(),
 			}
 
-			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
+			result, err := reconciler.Reconcile(ctx, reconcile.Request{
 				NamespacedName: typeNamespacedName,
 			})
 			Expect(err).NotTo(HaveOccurred())
-			// TODO(user): Add more specific assertions depending on your controller's reconciliation logic.
-			// Example: If you expect a certain status condition after reconciliation, verify it here.
+			Expect(result).To(Equal(ctrl.Result{}))
+		})
+	})
+
+	Context("When the resource does not exist", func() {
+		It("should return without error", func() {
+			reconciler := &Ec2InstanceReconciler{
+				Client: k8sClient,
+				Scheme: k8sClient.Scheme(),
+			}
+
+			result, err := reconciler.Reconcile(context.Background(), reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      "does-not-exist",
+					Namespace: "default",
+				},
+			})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result).To(Equal(ctrl.Result{}))
 		})
 	})
 })
