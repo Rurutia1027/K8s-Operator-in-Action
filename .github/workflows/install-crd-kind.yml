@@ -1,0 +1,120 @@
+# Install CRD on Kind and apply a sample CR (no operator deploy)
+name: Install CRD on Kind
+
+on:
+  push:
+    branches: [main, '0_prepare', 'issue-*']
+    paths:
+      - 'api/**'
+      - 'config/crd/**'
+      - 'config/samples/**'
+      - 'Makefile'
+      - '.github/workflows/install-crd-kind.yml'
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'config/crd/**'
+      - 'config/samples/**'
+      - 'Makefile'
+      - '.github/workflows/install-crd-kind.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  KIND_CLUSTER_NAME: operator-ci
+  CRD_NAME: ec2instances.compute.cloud.com
+  SAMPLE_FILE: config/samples/compute_v1_ec2instance.yaml
+  CR_NAME: ec2instance-sample
+
+jobs:
+  install-crd:
+    name: Kind — CRD install & sample CR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install Kind and create cluster
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind version
+          kind create cluster --name "${KIND_CLUSTER_NAME}" --wait 120s
+          kubectl cluster-info
+          kubectl get nodes
+          echo '| Kind cluster ready | ✅ passed |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Initialize summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## Install CRD on Kind
+
+          | Check | Status |
+          |-------|--------|
+          EOF
+
+      - name: Generate manifests & install CRD
+        run: |
+          go mod tidy
+          make generate manifests
+          make install
+          echo '| make install (CRD) | ✅ passed |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify CRD registered
+        run: |
+          kubectl wait --for=condition=Established "crd/${CRD_NAME}" --timeout=120s
+          kubectl get crd "${CRD_NAME}"
+          kubectl api-resources | grep -i ec2
+          echo '| CRD established | ✅ \`ec2instances.compute.cloud.com\` |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Apply sample CR
+        run: |
+          kubectl apply -f "${SAMPLE_FILE}"
+          kubectl get ec2instances -A
+          kubectl get ec2instance "${CR_NAME}" -o wide
+          echo '| Sample CR applied | ✅ \`ec2instance-sample\` |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify status is empty (no operator)
+        run: |
+          STATUS="$(kubectl get ec2instance "${CR_NAME}" -o jsonpath='{.status}' || true)"
+          echo "status=${STATUS}"
+          if [[ -n "${STATUS}" && "${STATUS}" != "{}" ]]; then
+            echo "::error::Expected empty status without operator, got: ${STATUS}"
+            exit 1
+          fi
+          echo '| Status empty (no operator) | ✅ passed |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify spec fields on CR
+        run: |
+          kubectl get ec2instance "${CR_NAME}" -o jsonpath='{.spec.instanceType}{"\n"}' | grep -q t3.micro
+          kubectl get ec2instance "${CR_NAME}" -o jsonpath='{.spec.region}{"\n"}' | grep -q us-east-1
+          echo '| Spec fields on CR | ✅ instanceType, region |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cleanup sample CR
+        if: always()
+        run: |
+          kubectl delete -f "${SAMPLE_FILE}" --ignore-not-found
+
+      - name: Final summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ### Scope
+          - Kind cluster created in CI
+          - CRD installed with `make install`
+          - Sample CR applied with `kubectl apply`
+          - Operator **not** deployed (status must stay empty)
+
+          ### Mirrors local script
+          `bin/build-and-register-crd.sh`
+          EOF
