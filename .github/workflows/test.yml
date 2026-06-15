@@ -23,7 +23,20 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Running Tests
+      - name: Run tests (envtest)
         run: |
           go mod tidy
+          make setup-envtest
           make test
+
+      - name: Test summary
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## Tests
+
+          - `make setup-envtest` — envtest binaries for local API server
+          - `make test` — fmt, vet, generate, manifests, controller envtest
+
+          Controller reconcile tests live in `internal/controller/`.
+          EOF

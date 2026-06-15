@@ -1,0 +1,78 @@
+# Minimal reconcile — controller envtest (no Kind, no AWS)
+name: Controller Reconcile Tests
+
+on:
+  push:
+    branches: [main, '0_prepare', 'issue-*']
+    paths:
+      - 'internal/controller/**'
+      - 'api/**'
+      - 'config/crd/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/workflows/controller-reconcile.yml'
+  pull_request:
+    paths:
+      - 'internal/controller/**'
+      - 'api/**'
+      - 'config/crd/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/workflows/controller-reconcile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  controller-test:
+    name: Controller — minimal reconcile (envtest)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Initialize summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## Controller Reconcile Tests
+
+          | Check | Status |
+          |-------|--------|
+          EOF
+
+      - name: Format & vet
+        run: |
+          go mod tidy
+          make fmt vet
+          echo '| fmt & vet | ✅ passed |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Setup envtest & run tests
+        run: |
+          make setup-envtest
+          make test
+          echo '| make test (envtest) | ✅ passed |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Final summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ### Scope
+          - Reconcile: Get CR, log spec, handle NotFound
+          - **No Kind cluster**
+          - **No AWS**
+
+          ### Acceptance
+          - [x] envtest passes
+          - [x] Reconcile succeeds for existing CR
+          - [x] Reconcile returns nil for deleted / missing CR
+          EOF
