@@ -77,3 +77,7 @@ Became a Cloud Native Engineer capable of building:
 - Internal Developer Platforms (IDP)
 - Platform Engineering Solutions
 - Cloud Infrastructure Controllers
+
+
+## References 
+[Build Your Own Kubernetes Operator](https://www.youtube.com/watch?v=odP153inZUo)
