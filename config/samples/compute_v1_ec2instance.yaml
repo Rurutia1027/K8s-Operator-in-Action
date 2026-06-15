@@ -1,0 +1,14 @@
+apiVersion: compute.cloud.com/v1
+kind: Ec2Instance
+metadata:
+  labels:
+    app.kubernetes.io/name: k8s-operator-in-action
+    app.kubernetes.io/managed-by: kustomize
+  name: ec2instance-sample
+spec:
+  instanceType: t3.micro
+  amiId: ami-0c55b159cbfafe1f0
+  region: us-east-1
+  associatePublicIP: true
+  tags:
+    environment: dev

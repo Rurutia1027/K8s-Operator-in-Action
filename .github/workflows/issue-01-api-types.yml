@@ -1,0 +1,135 @@
+# Issue #1 — CRD API Types
+# Scope: api/v1 types, code generation, CRD manifest, unit tests (no cluster)
+name: Issue #1 — CRD API Types
+
+on:
+  push:
+    branches: [main, '0_prepare', 'issue-*']
+    paths:
+      - 'api/**'
+      - 'config/crd/**'
+      - 'config/samples/**'
+      - 'internal/controller/**'
+      - 'cmd/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/workflows/issue-01-api-types.yml'
+  pull_request:
+    paths:
+      - 'api/**'
+      - 'config/crd/**'
+      - 'config/samples/**'
+      - 'internal/controller/**'
+      - 'cmd/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Makefile'
+      - '.github/workflows/issue-01-api-types.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CRD_FILE: config/crd/bases/compute.cloud.com_ec2instances.yaml
+  SAMPLE_FILE: config/samples/compute_v1_ec2instance.yaml
+
+jobs:
+  issue-01:
+    name: Issue #1 — API types & CRD generation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version-file: go.mod
+
+      - name: Initialize verification summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## Issue #1 — CRD API Types
+
+          | Check | Status |
+          |-------|--------|
+          EOF
+
+      - name: "[1/6] Tidy Go modules"
+        run: go mod tidy
+
+      - name: "[2/6] Format & vet"
+        run: |
+          make fmt vet
+          if [ -n "$(git status --short)" ]; then
+            echo "::error::Run 'make fmt' and commit formatting changes"
+            git diff
+            exit 1
+          fi
+          echo '| Format & vet | ✅ passed |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "[3/6] Generate DeepCopy & manifests"
+        run: |
+          make generate manifests
+          echo '| make generate manifests | ✅ passed |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "[4/6] Verify generated artifacts are committed"
+        run: |
+          if [ -n "$(git status --short)" ]; then
+            echo "::error::Generated files are out of date. Run 'make generate manifests' and commit."
+            git diff
+            exit 1
+          fi
+          echo '| Generated code committed | ✅ passed |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "[5/6] Verify CRD & sample shape"
+        run: |
+          test -f "${CRD_FILE}"
+          grep -q 'kind: CustomResourceDefinition' "${CRD_FILE}"
+          grep -q 'name: ec2instances.compute.cloud.com' "${CRD_FILE}"
+          grep -q 'instanceType' "${CRD_FILE}"
+          grep -q 'instanceId' "${CRD_FILE}"
+          grep -q 'subresources:' "${CRD_FILE}"
+          grep -q 'status: {}' "${CRD_FILE}"
+
+          test -f "${SAMPLE_FILE}"
+          grep -q 'kind: Ec2Instance' "${SAMPLE_FILE}"
+          grep -q 'instanceType:' "${SAMPLE_FILE}"
+          grep -q 'amiId:' "${SAMPLE_FILE}"
+          grep -q 'region:' "${SAMPLE_FILE}"
+
+          echo '| CRD YAML present | ✅ \`ec2instances.compute.cloud.com\` |' >> "$GITHUB_STEP_SUMMARY"
+          echo '| Spec fields in CRD | ✅ instanceType, amiId, region |' >> "$GITHUB_STEP_SUMMARY"
+          echo '| Status subresource | ✅ enabled |' >> "$GITHUB_STEP_SUMMARY"
+          echo '| Sample CR | ✅ \`config/samples/compute_v1_ec2instance.yaml\` |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: "[6/6] Run unit tests (envtest)"
+        run: |
+          make setup-envtest
+          make test
+          echo '| Unit tests (make test) | ✅ passed |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build manager binary
+        run: |
+          go build -o bin/manager cmd/main.go
+          echo '| Build manager | ✅ passed |' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Final summary
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+
+          ### Scope
+          - **Milestone:** M1 API & CRD — Issue #1
+          - **Cluster required:** No
+          - **AWS required:** No
+
+          ### Acceptance criteria
+          - [x] `Ec2InstanceSpec` / `Ec2InstanceStatus` defined in `api/v1/`
+          - [x] `make generate manifests` succeeds
+          - [x] CRD `ec2instances.compute.cloud.com` generated
+          - [x] `make test` passes locally with envtest
+          EOF
