@@ -1,4 +1,4 @@
-# K8s-Operator-in-Action
+# K8s-Operator-in-Action | [![E2E Tests](https://github.com/Rurutia1027/K8s-Operator-in-Action/actions/workflows/test-e2e.yml/badge.svg)](https://github.com/Rurutia1027/K8s-Operator-in-Action/actions/workflows/test-e2e.yml)
 
 ## Overview 
 This repository contains my learning notes and hands-on experiments while learning Kubernetes Operators Go and Kubebuilder. 
