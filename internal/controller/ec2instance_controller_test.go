@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -222,7 +223,7 @@ var _ = Describe("Ec2Instance Controller", func() {
 
 			result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
 			Expect(err).To(HaveOccurred())
-			Expect(result.Requeue).To(BeTrue())
+			Expect(result.RequeueAfter).To(BeNumerically(">", time.Duration(0)))
 
 			updated := &computev1.Ec2Instance{}
 			Expect(k8sClient.Get(ctx, nn(name), updated)).To(Succeed())

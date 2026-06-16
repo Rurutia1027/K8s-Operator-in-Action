@@ -66,12 +66,12 @@ func (r *Ec2InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		l.Info("deletion requested")
 		if r.Delete != nil {
 			if err := r.Delete(ctx, ec2Instance); err != nil {
-				return ctrl.Result{Requeue: true}, err
+				return ctrl.Result{RequeueAfter: time.Second}, err
 			}
 		}
 		controllerutil.RemoveFinalizer(ec2Instance, FinalizerName)
 		if err := r.Update(ctx, ec2Instance); err != nil {
-			return ctrl.Result{Requeue: true}, err
+			return ctrl.Result{RequeueAfter: time.Second}, err
 		}
 		return ctrl.Result{}, nil
 	}
@@ -80,7 +80,7 @@ func (r *Ec2InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if !controllerutil.ContainsFinalizer(ec2Instance, FinalizerName) {
 		controllerutil.AddFinalizer(ec2Instance, FinalizerName)
 		if err := r.Update(ctx, ec2Instance); err != nil {
-			return ctrl.Result{Requeue: true}, err
+			return ctrl.Result{RequeueAfter: time.Second}, err
 		}
 		return ctrl.Result{}, nil
 	}
