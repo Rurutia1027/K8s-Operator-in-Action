@@ -24,7 +24,11 @@ import (
 	computev1 "github.com/Rurutia1027/K8s-Operator-in-Action/api/v1"
 )
 
-const InstanceStateRunning = "running"
+const (
+	InstanceStateRunning = "running"
+	InstanceStateUnknown = "Unknown"
+	InstanceStateStopped = "stopped"
+)
 
 // InstanceDetails is a cloud-agnostic view of EC2 instance.
 type InstanceDetails struct {
@@ -115,4 +119,11 @@ func (f *FakeEC2Client) SetInstanceState(instanceID, state string) {
 	if d, ok := f.instances[instanceID]; ok {
 		d.State = state
 	}
+}
+
+// DeleteInstance removes instance without terminate (simulate external deletion).
+func (f *FakeEC2Client) DeleteInstance(instanceID string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.instances, instanceID)
 }
