@@ -7,6 +7,6 @@ kind get clusters
 exit 0 
 # 1) Create the project skeleton 
 
-kubbuilder init --domain cloud.com --repo github.com/Rurutia1027/K8s-Operator-in-Action
+kubebuilder init --domain cloud.com --repo github.com/Rurutia1027/K8s-Operator-in-Action
 
 # 2) Add your custom resource + controller stub 
