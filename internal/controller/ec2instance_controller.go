@@ -92,7 +92,7 @@ func (r *Ec2InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	ec2Instance.Status.InstanceID = "i-fake123"
-	ec2Instance.Status.State = "running"
+	ec2Instance.Status.State = InstanceStateRunning
 	ec2Instance.Status.PublicIP = "203.0.113.1"
 	ec2Instance.Status.PrivateIP = "10.0.0.1"
 

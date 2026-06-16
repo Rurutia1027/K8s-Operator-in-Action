@@ -251,7 +251,7 @@ var _ = Describe("Ec2Instance Controller", func() {
 			updated := &computev1.Ec2Instance{}
 			Expect(k8sClient.Get(ctx, nn(name), updated)).To(Succeed())
 			Expect(updated.Status.InstanceID).To(Equal("i-fake123"))
-			Expect(updated.Status.State).To(Equal("running"))
+			Expect(updated.Status.State).To(Equal(InstanceStateRunning))
 			Expect(updated.Status.PublicIP).To(Equal("203.0.113.1"))
 			Expect(updated.Status.PrivateIP).To(Equal("10.0.0.1"))
 		})
@@ -267,7 +267,7 @@ var _ = Describe("Ec2Instance Controller", func() {
 			current := &computev1.Ec2Instance{}
 			Expect(k8sClient.Get(ctx, nn("status-idempotent"), current)).To(Succeed())
 			current.Status.InstanceID = "i-existing"
-			current.Status.State = "running"
+			current.Status.State = InstanceStateRunning
 			Expect(k8sClient.Status().Update(ctx, current)).To(Succeed())
 			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn("status-idempotent")})
 			Expect(err).NotTo(HaveOccurred())

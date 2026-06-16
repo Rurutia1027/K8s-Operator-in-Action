@@ -24,6 +24,8 @@ import (
 	computev1 "github.com/Rurutia1027/K8s-Operator-in-Action/api/v1"
 )
 
+const InstanceStateRunning = "running"
+
 // InstanceDetails is a cloud-agnostic view of EC2 instance.
 type InstanceDetails struct {
 	InstanceID string
@@ -63,7 +65,7 @@ func (f *FakeEC2Client) RunInstance(_ context.Context, instance *computev1.Ec2In
 	id := fmt.Sprintf("i-fake%03d", f.counter)
 	details := &InstanceDetails{
 		InstanceID: id,
-		State:      "running",
+		State:      InstanceStateRunning,
 		PublicIP:   "203.0.113.10",
 		PrivateIP:  "10.0.0.10",
 		PublicDNS:  id + ".example.com",

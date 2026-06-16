@@ -38,7 +38,7 @@ func TestFakeEC2Client_RunInstance(t *testing.T) {
 	info, err := fake.RunInstance(context.Background(), cr)
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(info.InstanceID).To(Equal("i-fake001"))
-	g.Expect(info.State).To(Equal("running"))
+	g.Expect(info.State).To(Equal(InstanceStateRunning))
 }
 
 func TestFakeEC2Client_TerminateAndDescribe(t *testing.T) {
@@ -53,7 +53,7 @@ func TestFakeEC2Client_TerminateAndDescribe(t *testing.T) {
 	exists, details, err := fake.DescribeInstance(context.Background(), info.InstanceID, "eu-central-1")
 	g.Expect(err).NotTo(HaveOccurred())
 	g.Expect(exists).To(BeTrue())
-	g.Expect(details.State).To(Equal("running"))
+	g.Expect(details.State).To(Equal(InstanceStateRunning))
 
 	g.Expect(fake.TerminateInstance(context.Background(), info.InstanceID, "eu-central-1")).To(Succeed())
 
