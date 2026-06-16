@@ -85,6 +85,20 @@ func (r *Ec2InstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
+	if ec2Instance.Status.InstanceID != "" {
+		l.Info("status already set", "instanceID", ec2Instance.Status.InstanceID)
+		return ctrl.Result{}, nil
+	}
+
+	ec2Instance.Status.InstanceID = "i-fake123"
+	ec2Instance.Status.State = "running"
+	ec2Instance.Status.PublicIP = "203.0.113.1"
+	ec2Instance.Status.PrivateIP = "10.0.0.1"
+
+	if err := r.Status().Update(ctx, ec2Instance); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	l.Info("got resource", "instanceType", ec2Instance.Spec.InstanceType, "region", ec2Instance.Spec.Region)
 	return ctrl.Result{}, nil
 }

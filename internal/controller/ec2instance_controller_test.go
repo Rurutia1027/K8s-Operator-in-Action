@@ -230,4 +230,50 @@ var _ = Describe("Ec2Instance Controller", func() {
 			Expect(controllerutil.ContainsFinalizer(updated, FinalizerName)).To(BeTrue())
 		})
 	})
+
+	Context("status updates", func() {
+		const name = "status-update"
+		AfterEach(func() {
+			cleanupCR(ctx, name)
+		})
+
+		It("writes fake status when status is empty", func() {
+			Expect(k8sClient.Create(ctx, sampleCR(name))).To(Succeed())
+
+			r := reconcilerWithStub()
+			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
+			Expect(err).NotTo(HaveOccurred())
+
+			// First reconcile may only add finalizer; second writes status.
+			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
+			Expect(err).NotTo(HaveOccurred())
+
+			updated := &computev1.Ec2Instance{}
+			Expect(k8sClient.Get(ctx, nn(name), updated)).To(Succeed())
+			Expect(updated.Status.InstanceID).To(Equal("i-fake123"))
+			Expect(updated.Status.State).To(Equal("running"))
+			Expect(updated.Status.PublicIP).To(Equal("203.0.113.1"))
+			Expect(updated.Status.PrivateIP).To(Equal("10.0.0.1"))
+		})
+
+		It("does not overwrite existing status", func() {
+			cr := sampleCR("status-idempotent")
+			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
+			defer cleanupCR(ctx, "status-idempotent")
+			// add finalizer first to pass finalizer gate
+			r := reconcilerWithStub()
+			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn("status-idempotent")})
+			Expect(err).NotTo(HaveOccurred())
+			current := &computev1.Ec2Instance{}
+			Expect(k8sClient.Get(ctx, nn("status-idempotent"), current)).To(Succeed())
+			current.Status.InstanceID = "i-existing"
+			current.Status.State = "running"
+			Expect(k8sClient.Status().Update(ctx, current)).To(Succeed())
+			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn("status-idempotent")})
+			Expect(err).NotTo(HaveOccurred())
+			updated := &computev1.Ec2Instance{}
+			Expect(k8sClient.Get(ctx, nn("status-idempotent"), updated)).To(Succeed())
+			Expect(updated.Status.InstanceID).To(Equal("i-existing"))
+		})
+	})
 })
