@@ -178,10 +178,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := (&controller.Ec2InstanceReconciler{
+	reconciler := &controller.Ec2InstanceReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	}
+	if os.Getenv("USE_FAKE_EC2") == "true" {
+		setupLog.Info("Using fake EC2 client implementation")
+		reconciler.EC2 = controller.NewFakeEC2Client()
+	}
+	if err := reconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "ec2instance")
 		os.Exit(1)
 	}

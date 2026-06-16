@@ -41,6 +41,7 @@ type Ec2InstanceReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Delete DeleteHook
+	EC2    EC2Client
 }
 
 // +kubebuilder:rbac:groups=compute.cloud.com,resources=ec2instances,verbs=get;list;watch;create;update;patch;delete
