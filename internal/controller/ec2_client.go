@@ -28,6 +28,9 @@ const (
 	InstanceStateRunning = "running"
 	InstanceStateUnknown = "Unknown"
 	InstanceStateStopped = "stopped"
+
+	FakeFirstInstanceID  = "i-fake001"
+	FakeInstancePublicIP = "203.0.113.10"
 )
 
 // InstanceDetails is a cloud-agnostic view of EC2 instance.
@@ -70,7 +73,7 @@ func (f *FakeEC2Client) RunInstance(_ context.Context, instance *computev1.Ec2In
 	details := &InstanceDetails{
 		InstanceID: id,
 		State:      InstanceStateRunning,
-		PublicIP:   "203.0.113.10",
+		PublicIP:   FakeInstancePublicIP,
 		PrivateIP:  "10.0.0.10",
 		PublicDNS:  id + ".example.com",
 		PrivateDNS: "ip-10-0-0-10.internal",

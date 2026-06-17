@@ -37,7 +37,7 @@ func TestFakeEC2Client_RunInstance(t *testing.T) {
 
 	info, err := fake.RunInstance(context.Background(), cr)
 	g.Expect(err).NotTo(HaveOccurred())
-	g.Expect(info.InstanceID).To(Equal("i-fake001"))
+	g.Expect(info.InstanceID).To(Equal(FakeFirstInstanceID))
 	g.Expect(info.State).To(Equal(InstanceStateRunning))
 }
 

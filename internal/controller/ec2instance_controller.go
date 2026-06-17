@@ -16,14 +16,16 @@ package controller
 
 import (
 	"context"
-	computev1 "github.com/Rurutia1027/K8s-Operator-in-Action/api/v1"
+	"time"
+
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	"time"
+
+	computev1 "github.com/Rurutia1027/K8s-Operator-in-Action/api/v1"
 )
 
 const FinalizerName = "ec2instance.compute.cloud.com"

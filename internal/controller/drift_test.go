@@ -26,7 +26,7 @@ func TestDetectDrift_InstanceGone(t *testing.T) {
 	g := NewWithT(t)
 	cr := &computev1.Ec2Instance{
 		Status: computev1.Ec2InstanceStatus{
-			InstanceID: "i-fake001",
+			InstanceID: FakeFirstInstanceID,
 			State:      InstanceStateRunning,
 			PublicIP:   "203.0.113.1",
 		},
@@ -41,9 +41,9 @@ func TestDetectDrift_InstanceGone(t *testing.T) {
 func TestDetectDrift_StateChanged(t *testing.T) {
 	g := NewWithT(t)
 	cr := &computev1.Ec2Instance{
-		Status: computev1.Ec2InstanceStatus{InstanceID: "i-fake001", State: InstanceStateRunning},
+		Status: computev1.Ec2InstanceStatus{InstanceID: FakeFirstInstanceID, State: InstanceStateRunning},
 	}
-	details := &InstanceDetails{InstanceID: "i-fake001", State: InstanceStateStopped}
+	details := &InstanceDetails{InstanceID: FakeFirstInstanceID, State: InstanceStateStopped}
 	result := DetectDrift(cr, true, details)
 	g.Expect(result.Changed).To(BeTrue())
 	g.Expect(result.Status.State).To(Equal(InstanceStateStopped))
@@ -52,15 +52,15 @@ func TestDetectDrift_NoChange(t *testing.T) {
 	g := NewWithT(t)
 	cr := &computev1.Ec2Instance{
 		Status: computev1.Ec2InstanceStatus{
-			InstanceID: "i-fake001",
+			InstanceID: FakeFirstInstanceID,
 			State:      InstanceStateRunning,
-			PublicIP:   "203.0.113.10",
+			PublicIP:   FakeInstancePublicIP,
 		},
 	}
 	details := &InstanceDetails{
-		InstanceID: "i-fake001",
+		InstanceID: FakeFirstInstanceID,
 		State:      InstanceStateRunning,
-		PublicIP:   "203.0.113.10",
+		PublicIP:   FakeInstancePublicIP,
 	}
 	result := DetectDrift(cr, true, details)
 	g.Expect(result.Changed).To(BeFalse())

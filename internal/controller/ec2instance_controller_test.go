@@ -73,7 +73,7 @@ func cleanupCR(ctx context.Context, name string) {
 }
 
 func reconcileUntilStatus(ctx context.Context, r *Ec2InstanceReconciler, req reconcile.Request) *computev1.Ec2Instance {
-	for i := 0; i < 4; i++ {
+	for range 4 {
 		_, err := r.Reconcile(ctx, req)
 		Expect(err).NotTo(HaveOccurred())
 	}
@@ -116,7 +116,7 @@ var _ = Describe("Ec2Instance Controller", func() {
 			req := reconcile.Request{NamespacedName: nn(name)}
 			updated := reconcileUntilStatus(ctx, reconcilerWithFake(nil), req)
 
-			Expect(updated.Status.InstanceID).To(Equal("i-fake001"))
+			Expect(updated.Status.InstanceID).To(Equal(FakeFirstInstanceID))
 			Expect(updated.Status.State).To(Equal(InstanceStateRunning))
 			Expect(controllerutil.ContainsFinalizer(updated, FinalizerName)).To(BeTrue())
 		})
@@ -132,15 +132,15 @@ var _ = Describe("Ec2Instance Controller", func() {
 			cr := sampleCR(name)
 			controllerutil.AddFinalizer(cr, FinalizerName)
 			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
-			cr.Status = computev1.Ec2InstanceStatus{InstanceID: "i-fake001", State: InstanceStateRunning}
+			cr.Status = computev1.Ec2InstanceStatus{InstanceID: FakeFirstInstanceID, State: InstanceStateRunning}
 			Expect(k8sClient.Status().Update(ctx, cr)).To(Succeed())
 			_, _ = fake.RunInstance(ctx, cr)
 
 			req := reconcile.Request{NamespacedName: nn(name)}
-			_, before, _ := fake.DescribeInstance(ctx, "i-fake001", "us-east-1")
+			_, before, _ := fake.DescribeInstance(ctx, FakeFirstInstanceID, "us-east-1")
 			_, err := reconcilerWithFake(fake).Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			_, after, _ := fake.DescribeInstance(ctx, "i-fake001", "us-east-1")
+			_, after, _ := fake.DescribeInstance(ctx, FakeFirstInstanceID, "us-east-1")
 			Expect(after).To(Equal(before))
 		})
 	})
@@ -153,7 +153,7 @@ var _ = Describe("Ec2Instance Controller", func() {
 			cr := sampleCR(name)
 			controllerutil.AddFinalizer(cr, FinalizerName)
 			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
-			cr.Status = computev1.Ec2InstanceStatus{InstanceID: "i-fake001", State: InstanceStateRunning}
+			cr.Status = computev1.Ec2InstanceStatus{InstanceID: FakeFirstInstanceID, State: InstanceStateRunning}
 			Expect(k8sClient.Status().Update(ctx, cr)).To(Succeed())
 			_, _ = fake.RunInstance(ctx, cr)
 
@@ -162,7 +162,7 @@ var _ = Describe("Ec2Instance Controller", func() {
 			_, err := reconcilerWithFake(fake).Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
 
-			exists, _, _ := fake.DescribeInstance(ctx, "i-fake001", "us-east-1")
+			exists, _, _ := fake.DescribeInstance(ctx, FakeFirstInstanceID, "us-east-1")
 			Expect(exists).To(BeFalse())
 
 			got := &computev1.Ec2Instance{}
@@ -185,7 +185,7 @@ var _ = Describe("Ec2Instance Controller", func() {
 			cr := sampleCR(name)
 			controllerutil.AddFinalizer(cr, FinalizerName)
 			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
-			cr.Status = computev1.Ec2InstanceStatus{InstanceID: "i-fake001", State: InstanceStateRunning}
+			cr.Status = computev1.Ec2InstanceStatus{InstanceID: FakeFirstInstanceID, State: InstanceStateRunning}
 			Expect(k8sClient.Status().Update(ctx, cr)).To(Succeed())
 			_, _ = fake.RunInstance(ctx, cr)
 			Expect(k8sClient.Delete(ctx, cr)).To(Succeed())
