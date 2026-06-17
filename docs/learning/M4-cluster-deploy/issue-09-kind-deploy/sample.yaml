@@ -1,9 +1,0 @@
-apiVersion: compute.cloud.com/v1
-kind: Ec2Instance
-metadata:
-  name: ec2instance-kind-09
-  namespace: default
-spec:
-  instanceType: t3.micro
-  amiId: ami-placeholder
-  region: eu-central-1
