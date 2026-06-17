@@ -47,11 +47,14 @@ func sampleCR(name string) *computev1.Ec2Instance {
 	}
 }
 
-func reconcilerWithStub() *Ec2InstanceReconciler {
+func reconcilerWithFake(ec2 EC2Client) *Ec2InstanceReconciler {
+	if ec2 == nil {
+		ec2 = NewFakeEC2Client()
+	}
 	return &Ec2InstanceReconciler{
 		Client: k8sClient,
 		Scheme: k8sClient.Scheme(),
-		Delete: StubDelete,
+		EC2:    ec2,
 	}
 }
 
@@ -69,33 +72,33 @@ func cleanupCR(ctx context.Context, name string) {
 	_ = k8sClient.Delete(ctx, cr)
 }
 
+func reconcileUntilStatus(ctx context.Context, r *Ec2InstanceReconciler, req reconcile.Request) *computev1.Ec2Instance {
+	for range 4 {
+		_, err := r.Reconcile(ctx, req)
+		Expect(err).NotTo(HaveOccurred())
+	}
+	updated := &computev1.Ec2Instance{}
+	Expect(k8sClient.Get(ctx, req.NamespacedName, updated)).To(Succeed())
+	return updated
+}
+
+// brokenEC2Client simulates AWS errors for Issue #8.
+type brokenEC2Client struct{ err error }
+
+func (b *brokenEC2Client) RunInstance(context.Context, *computev1.Ec2Instance) (*computev1.CreatedInstanceInfo, error) {
+	return nil, b.err
+}
+func (b *brokenEC2Client) TerminateInstance(context.Context, string, string) error { return b.err }
+func (b *brokenEC2Client) DescribeInstance(context.Context, string, string) (bool, *InstanceDetails, error) {
+	return false, nil, b.err
+}
+
 var _ = Describe("Ec2Instance Controller", func() {
 	ctx := context.Background()
 
-	Context("minimal reconcile", func() {
-		const name = "minimal-test"
-
-		BeforeEach(func() {
-			cr := sampleCR(name)
-			_ = k8sClient.Create(ctx, cr)
-		})
-
-		AfterEach(func() {
-			cleanupCR(ctx, name)
-		})
-
-		It("reconciles an existing CR without error", func() {
-			result, err := reconcilerWithStub().Reconcile(ctx, reconcile.Request{
-				NamespacedName: nn(name),
-			})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result).To(Equal(ctrl.Result{}))
-		})
-	})
-
 	Context("When the resource does not exist", func() {
 		It("returns without error", func() {
-			result, err := reconcilerWithStub().Reconcile(ctx, reconcile.Request{
+			result, err := reconcilerWithFake(nil).Reconcile(ctx, reconcile.Request{
 				NamespacedName: nn("does-not-exist"),
 			})
 			Expect(err).NotTo(HaveOccurred())
@@ -103,177 +106,182 @@ var _ = Describe("Ec2Instance Controller", func() {
 		})
 	})
 
-	Context("finalizer added on first reconcile", func() {
-		const name = "finalizer-add"
+	Context("full reconcile create", func() {
+		const name = "full-create"
 
-		AfterEach(func() {
-			cleanupCR(ctx, name)
-		})
+		AfterEach(func() { cleanupCR(ctx, name) })
 
-		It("adds finalizer ec2instance.compute.cloud.com", func() {
+		It("adds finalizer and sets i-fake001 in status", func() {
 			Expect(k8sClient.Create(ctx, sampleCR(name))).To(Succeed())
+			req := reconcile.Request{NamespacedName: nn(name)}
+			updated := reconcileUntilStatus(ctx, reconcilerWithFake(nil), req)
 
-			_, err := reconcilerWithStub().Reconcile(ctx, reconcile.Request{
-				NamespacedName: nn(name),
-			})
-			Expect(err).NotTo(HaveOccurred())
-
-			updated := &computev1.Ec2Instance{}
-			Expect(k8sClient.Get(ctx, nn(name), updated)).To(Succeed())
+			Expect(updated.Status.InstanceID).To(Equal(FakeFirstInstanceID))
+			Expect(updated.Status.State).To(Equal(InstanceStateRunning))
 			Expect(controllerutil.ContainsFinalizer(updated, FinalizerName)).To(BeTrue())
 		})
 	})
 
-	Context("finalizer idempotent on second reconcile", func() {
-		const name = "finalizer-twice"
+	Context("does not recreate when instance ID exists", func() {
+		const name = "no-recreate"
 
-		AfterEach(func() {
-			cleanupCR(ctx, name)
-		})
+		AfterEach(func() { cleanupCR(ctx, name) })
 
-		It("does not duplicate finalizer", func() {
-			Expect(k8sClient.Create(ctx, sampleCR(name))).To(Succeed())
-
-			r := reconcilerWithStub()
-			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
-			Expect(err).NotTo(HaveOccurred())
-
-			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
-			Expect(err).NotTo(HaveOccurred())
-
-			updated := &computev1.Ec2Instance{}
-			Expect(k8sClient.Get(ctx, nn(name), updated)).To(Succeed())
-			Expect(updated.Finalizers).To(ConsistOf(FinalizerName))
-		})
-	})
-
-	Context("finalizer removed on delete", func() {
-		const name = "finalizer-del"
-
-		It("runs stub cleanup and deletes CR", func() {
+		It("keeps the same fake instance", func() {
+			fake := NewFakeEC2Client()
 			cr := sampleCR(name)
 			controllerutil.AddFinalizer(cr, FinalizerName)
 			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
+			cr.Status = computev1.Ec2InstanceStatus{InstanceID: FakeFirstInstanceID, State: InstanceStateRunning}
+			Expect(k8sClient.Status().Update(ctx, cr)).To(Succeed())
+			_, _ = fake.RunInstance(ctx, cr)
 
-			r := reconcilerWithStub()
-			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
+			req := reconcile.Request{NamespacedName: nn(name)}
+			_, before, _ := fake.DescribeInstance(ctx, FakeFirstInstanceID, "us-east-1")
+			_, err := reconcilerWithFake(fake).Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
+			_, after, _ := fake.DescribeInstance(ctx, FakeFirstInstanceID, "us-east-1")
+			Expect(after).To(Equal(before))
+		})
+	})
 
+	Context("full reconcile delete", func() {
+		const name = "full-delete"
+
+		It("terminates fake instance and removes finalizer", func() {
+			fake := NewFakeEC2Client()
+			cr := sampleCR(name)
+			controllerutil.AddFinalizer(cr, FinalizerName)
+			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
+			cr.Status = computev1.Ec2InstanceStatus{InstanceID: FakeFirstInstanceID, State: InstanceStateRunning}
+			Expect(k8sClient.Status().Update(ctx, cr)).To(Succeed())
+			_, _ = fake.RunInstance(ctx, cr)
+
+			req := reconcile.Request{NamespacedName: nn(name)}
 			Expect(k8sClient.Delete(ctx, cr)).To(Succeed())
-
-			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
+			_, err := reconcilerWithFake(fake).Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
 
-			updated := &computev1.Ec2Instance{}
-			err = k8sClient.Get(ctx, nn(name), updated)
+			exists, _, _ := fake.DescribeInstance(ctx, FakeFirstInstanceID, "us-east-1")
+			Expect(exists).To(BeFalse())
+
+			got := &computev1.Ec2Instance{}
+			err = k8sClient.Get(ctx, req.NamespacedName, got)
 			if apierrors.IsNotFound(err) {
 				return
 			}
 			Expect(err).NotTo(HaveOccurred())
-			Expect(controllerutil.ContainsFinalizer(updated, FinalizerName)).To(BeFalse())
+			Expect(controllerutil.ContainsFinalizer(got, FinalizerName)).To(BeFalse())
 		})
 	})
 
-	Context("delete with nil DeleteHook", func() {
-		const name = "finalizer-nil-hook"
+	Context("terminate failure", func() {
+		const name = "terminate-fail"
 
-		It("still removes finalizer without external cleanup", func() {
+		AfterEach(func() { cleanupCR(ctx, name) })
+
+		It("requeues and keeps finalizer", func() {
+			fake := NewFakeEC2Client()
 			cr := sampleCR(name)
 			controllerutil.AddFinalizer(cr, FinalizerName)
 			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
-
-			r := &Ec2InstanceReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-				Delete: nil,
-			}
-
+			cr.Status = computev1.Ec2InstanceStatus{InstanceID: FakeFirstInstanceID, State: InstanceStateRunning}
+			Expect(k8sClient.Status().Update(ctx, cr)).To(Succeed())
+			_, _ = fake.RunInstance(ctx, cr)
 			Expect(k8sClient.Delete(ctx, cr)).To(Succeed())
 
-			result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
-			Expect(err).NotTo(HaveOccurred())
-			Expect(result).To(Equal(ctrl.Result{}))
-
-			updated := &computev1.Ec2Instance{}
-			err = k8sClient.Get(ctx, nn(name), updated)
-			Expect(apierrors.IsNotFound(err)).To(BeTrue())
-		})
-	})
-
-	Context("delete hook failure", func() {
-		const name = "finalizer-hook-fail"
-
-		AfterEach(func() {
-			cleanupCR(ctx, name)
-		})
-
-		It("requeues and keeps finalizer when cleanup fails", func() {
-			cr := sampleCR(name)
-			controllerutil.AddFinalizer(cr, FinalizerName)
-			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
-			Expect(k8sClient.Delete(ctx, cr)).To(Succeed())
-
-			r := &Ec2InstanceReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
-				Delete: func(context.Context, *computev1.Ec2Instance) error {
-					return errors.New("cleanup failed")
-				},
-			}
-
+			r := reconcilerWithFake(&brokenTerminateClient{fake: fake})
 			result, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
 			Expect(err).To(HaveOccurred())
 			Expect(result.RequeueAfter).To(BeNumerically(">", time.Duration(0)))
 
-			updated := &computev1.Ec2Instance{}
-			Expect(k8sClient.Get(ctx, nn(name), updated)).To(Succeed())
-			Expect(controllerutil.ContainsFinalizer(updated, FinalizerName)).To(BeTrue())
+			got := &computev1.Ec2Instance{}
+			Expect(k8sClient.Get(ctx, nn(name), got)).To(Succeed())
+			Expect(controllerutil.ContainsFinalizer(got, FinalizerName)).To(BeTrue())
 		})
 	})
 
-	Context("status updates", func() {
-		const name = "status-update"
-		AfterEach(func() {
-			cleanupCR(ctx, name)
-		})
+	Context("drift detection", func() {
+		const name = "drift-state"
 
-		It("writes fake status when status is empty", func() {
-			Expect(k8sClient.Create(ctx, sampleCR(name))).To(Succeed())
+		AfterEach(func() { cleanupCR(ctx, name) })
 
-			r := reconcilerWithStub()
-			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
-			Expect(err).NotTo(HaveOccurred())
+		It("updates status when fake instance state changes", func() {
+			fake := NewFakeEC2Client()
+			cr := sampleCR(name)
+			controllerutil.AddFinalizer(cr, FinalizerName)
+			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
+			info, _ := fake.RunInstance(ctx, cr)
+			cr.Status = computev1.Ec2InstanceStatus{
+				InstanceID: info.InstanceID,
+				State:      InstanceStateRunning,
+				PublicIP:   info.PublicIP,
+				PrivateIP:  info.PrivateIP,
+			}
+			Expect(k8sClient.Status().Update(ctx, cr)).To(Succeed())
+			fake.SetInstanceState(info.InstanceID, InstanceStateStopped)
 
-			// First reconcile may only add finalizer; second writes status.
-			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
+			req := reconcile.Request{NamespacedName: nn(name)}
+			_, err := reconcilerWithFake(fake).Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
 
 			updated := &computev1.Ec2Instance{}
 			Expect(k8sClient.Get(ctx, nn(name), updated)).To(Succeed())
-			Expect(updated.Status.InstanceID).To(Equal("i-fake123"))
-			Expect(updated.Status.State).To(Equal(InstanceStateRunning))
-			Expect(updated.Status.PublicIP).To(Equal("203.0.113.1"))
-			Expect(updated.Status.PrivateIP).To(Equal("10.0.0.1"))
+			Expect(updated.Status.State).To(Equal(InstanceStateStopped))
 		})
 
-		It("does not overwrite existing status", func() {
-			cr := sampleCR("status-idempotent")
+		It("sets Unknown when instance disappears from fake", func() {
+			fake := NewFakeEC2Client()
+			cr := sampleCR(name)
+			controllerutil.AddFinalizer(cr, FinalizerName)
 			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
-			defer cleanupCR(ctx, "status-idempotent")
-			// add finalizer first to pass finalizer gate
-			r := reconcilerWithStub()
-			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn("status-idempotent")})
+			info, _ := fake.RunInstance(ctx, cr)
+			cr.Status = computev1.Ec2InstanceStatus{
+				InstanceID: info.InstanceID,
+				State:      InstanceStateRunning,
+				PublicIP:   info.PublicIP,
+			}
+			Expect(k8sClient.Status().Update(ctx, cr)).To(Succeed())
+			fake.DeleteInstance(info.InstanceID)
+
+			req := reconcile.Request{NamespacedName: nn(name)}
+			_, err := reconcilerWithFake(fake).Reconcile(ctx, req)
 			Expect(err).NotTo(HaveOccurred())
-			current := &computev1.Ec2Instance{}
-			Expect(k8sClient.Get(ctx, nn("status-idempotent"), current)).To(Succeed())
-			current.Status.InstanceID = "i-existing"
-			current.Status.State = InstanceStateRunning
-			Expect(k8sClient.Status().Update(ctx, current)).To(Succeed())
-			_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: nn("status-idempotent")})
-			Expect(err).NotTo(HaveOccurred())
+
 			updated := &computev1.Ec2Instance{}
-			Expect(k8sClient.Get(ctx, nn("status-idempotent"), updated)).To(Succeed())
-			Expect(updated.Status.InstanceID).To(Equal("i-existing"))
+			Expect(k8sClient.Get(ctx, nn(name), updated)).To(Succeed())
+			Expect(updated.Status.State).To(Equal(InstanceStateUnknown))
+			Expect(updated.Status.PublicIP).To(BeEmpty())
+		})
+	})
+
+	Context("fake client error", func() {
+		const name = "client-error"
+
+		AfterEach(func() { cleanupCR(ctx, name) })
+
+		It("surfaces RunInstance errors", func() {
+			cr := sampleCR(name)
+			controllerutil.AddFinalizer(cr, FinalizerName)
+			Expect(k8sClient.Create(ctx, cr)).To(Succeed())
+
+			r := reconcilerWithFake(&brokenEC2Client{err: errors.New("simulated AWS error")})
+			_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: nn(name)})
+			Expect(err).To(HaveOccurred())
 		})
 	})
 })
+
+type brokenTerminateClient struct {
+	fake *FakeEC2Client
+}
+
+func (b *brokenTerminateClient) RunInstance(ctx context.Context, instance *computev1.Ec2Instance) (*computev1.CreatedInstanceInfo, error) {
+	return b.fake.RunInstance(ctx, instance)
+}
+func (b *brokenTerminateClient) DescribeInstance(ctx context.Context, instanceID, region string) (bool, *InstanceDetails, error) {
+	return b.fake.DescribeInstance(ctx, instanceID, region)
+}
+func (b *brokenTerminateClient) TerminateInstance(context.Context, string, string) error {
+	return errors.New("terminate failed")
+}

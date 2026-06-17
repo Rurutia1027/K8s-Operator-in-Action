@@ -1,6 +1,6 @@
 #!/bin/sh 
 
-kind create cluster --name operator-dev 
+kind create cluster --name kind 
 
 kind get clusters 
 

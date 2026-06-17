@@ -87,6 +87,9 @@ spec:
             port: 8081
           initialDelaySeconds: 5
           periodSeconds: 10
+        env:
+        - name: USE_FAKE_EC2
+          value: "true"
         # TODO(user): Configure the resources accordingly based on the project requirements.
         # More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/
         resources:
