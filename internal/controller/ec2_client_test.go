@@ -32,7 +32,7 @@ func TestFakeEC2Client_RunInstance(t *testing.T) {
 
 	cr := &computev1.Ec2Instance{
 		ObjectMeta: metav1.ObjectMeta{Name: "test"},
-		Spec:       computev1.Ec2InstanceSpec{Region: "eu-central-1", InstanceType: "t3.micro", AMIId: "ami-x"},
+		Spec:       computev1.Ec2InstanceSpec{Region: "eu-central-1", InstanceType: testInstanceType, AMIId: testAMIX},
 	}
 
 	info, err := fake.RunInstance(context.Background(), cr)

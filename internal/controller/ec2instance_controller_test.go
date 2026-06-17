@@ -40,7 +40,7 @@ func sampleCR(name string) *computev1.Ec2Instance {
 			Namespace: "default",
 		},
 		Spec: computev1.Ec2InstanceSpec{
-			InstanceType: "t3.micro",
+			InstanceType: testInstanceType,
 			AMIId:        "ami-placeholder",
 			Region:       "us-east-1",
 		},
