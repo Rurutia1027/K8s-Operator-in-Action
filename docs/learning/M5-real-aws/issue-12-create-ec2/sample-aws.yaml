@@ -1,0 +1,22 @@
+apiVersion: compute.cloud.com/v1
+kind: Ec2Instance
+metadata:
+  name: web-server-learning-12
+  namespace: default
+spec:
+  instanceType: t3.micro
+  amiId: ami-REPLACE_ME          # Amazon Linux in your region
+  region: eu-central-1
+  keyPair: REPLACE_KEYPAIR         # e.g. vmskp — prepare before running
+  securityGroups:
+    - sg-REPLACE_ME
+  subnet: subnet-REPLACE_ME
+  tags:
+    Name: k8s-learning-12
+    ManagedBy: ec2-operator
+    Environment: learning
+  storage:
+    rootVolume:
+      size: 20
+      type: gp3
+      encrypted: true

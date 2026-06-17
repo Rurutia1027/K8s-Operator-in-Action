@@ -1,0 +1,69 @@
+name: Learning
+
+on:
+  push:
+    paths:
+      - 'learning/**'
+      - 'api/**'
+      - 'internal/**'
+      - 'cmd/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/learning.yml'
+  pull_request:
+    paths:
+      - 'learning/**'
+      - 'api/**'
+      - 'internal/**'
+      - 'cmd/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/learning.yml'
+
+jobs:
+  unit:
+    name: Learning unit tests (Issues 1-11)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Tidy modules
+        run: go mod tidy
+
+      - name: Setup envtest
+        run: make setup-envtest
+
+      - name: Format and vet
+        run: |
+          make fmt vet
+          test -z "$(git status --short)" || (echo "run make fmt" && git diff && exit 1)
+
+      - name: Run learning Go tests
+        run: |
+          go test ./learning/M1-api-and-crd/issue-01-crd-api-types/... -v
+          go test ./learning/M2-controller-basics/... -v
+          go test ./learning/M3-fake-aws-client/... -v
+          go test ./learning/M4-cluster-deploy/issue-10-drift-detection/... -v
+          go test ./learning/M4-cluster-deploy/issue-11-spec-to-run-input/... -v
+
+      - name: Generate manifests
+        run: make generate manifests
+
+      - name: Build manager
+        run: go build -o bin/manager cmd/main.go
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.63.4

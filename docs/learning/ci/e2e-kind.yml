@@ -1,0 +1,59 @@
+name: Learning E2E Kind
+
+on:
+  push:
+    paths:
+      - 'learning/**'
+      - 'internal/**'
+      - 'cmd/**'
+      - 'config/**'
+      - '.github/workflows/learning-e2e-kind.yml'
+  pull_request:
+    paths:
+      - 'learning/**'
+      - 'internal/**'
+      - 'cmd/**'
+      - 'config/**'
+      - '.github/workflows/learning-e2e-kind.yml'
+
+jobs:
+  kind-smoke:
+    name: Issue 9 — Kind deploy smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          kind create cluster
+
+      - name: Build and deploy
+        env:
+          USE_FAKE_EC2: "true"
+          IMG: ec2operator:learning-ci
+        run: |
+          go mod tidy
+          make docker-build IMG=$IMG
+          kind load docker-image $IMG
+          make install
+          make deploy IMG=$IMG
+          kubectl wait --for=condition=Available deployment/ec2operator-controller-manager \
+            -n ec2operator-system --timeout=180s
+
+      - name: Apply sample CR
+        run: |
+          kubectl apply -f learning/M4-cluster-deploy/issue-09-kind-deploy/sample.yaml
+          kubectl get ec2instance ec2instance-kind-09 -o wide
+          kubectl logs -n ec2operator-system deployment/ec2operator-controller-manager --tail=30
+
+      - name: Helm lint
+        run: |
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          helm lint ./dist/chart
